@@ -29,7 +29,8 @@ Usage:
 ```
 pietro$ python ./XSIDirParser.py -H xsi.test.server -u user@testdomain.com -p mypass -n Personal -t SNOM_TBOOK
 
-<?xml version="1.0" encoding="utf-8"?><tbook e="2" complete="False">
+<?xml version="1.0" encoding="utf-8"?>
+<tbook e="2" complete="False">
 	<item context="active" type="" fav="false" mod="true" index="1">
 		<number>1034</number>
 		<name>User1</name>

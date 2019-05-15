@@ -278,7 +278,7 @@ class XSI2SnomTbook(XSIDirectory):
         XSIDirectory.__init__(self, host, username, password, port=port, schema=schema, name=name, query=query, timeout=timeout, source_address=source_address, skip_tags=[], select_tags=tbook_select_tags)
     
     def __str__(self):
-        ret = '<?xml version="1.0" encoding="utf-8"?>'
+        ret = '<?xml version="1.0" encoding="utf-8"?>\n'
         ret += '<tbook e="2" complete="%r">\n' % self.complete
         index = 1
         for contact in self.directory:
