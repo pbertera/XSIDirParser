@@ -14,6 +14,13 @@
 #
 # You should have received a copy of the GNU General Public License
 # along with XSIDirParser.  If not, see <http://www.gnu.org/licenses/>.
+#
+# TODO:
+# - PEP-8
+# - Python 3
+# - Use requests instead of httplib
+# - Debug option to dump all the data
+# - Derive a generic tool to query XSI actions
 
 import httplib
 import base64
@@ -30,15 +37,16 @@ class XSISetupException(Exception):
 
 class XSIDirectory:
     '''Class representing the XSIDirectory'''
-    def __init__(self, host, username, password='', port=None, schema='http', name='Group', query='', timeout=None, source_address=None, skip_tags=[], select_tags=[], fields_map={}):
+    def __init__(self, host, username, password='', port=None, schema='http', sip_user=None, name='Group', query='', timeout=None, source_address=None, skip_tags=[], select_tags=[], fields_map={}):
         '''Instantiate an XSIDirectory object creating a connection to the XSI Server:
         
         Keyword arguments:
         - 'host': the XSI serve name
         - 'username': the authentication username
         - 'password': the authentication password
-        - 'port': the TCP port to use for the connection. If 'None' 80 is used with 'http' an 445 for 'https'
+        - 'port': the TCP port to use for the connection. If 'None' 80 is used with 'http' an 443 for 'https'
         - 'schema': protocol schema, can be 'http' or 'https'. If wrong schema is passed a 'XSISetupException' is raised
+        - 'sip_user': if Broadworks SIP authentication must be used, this define the SIP username, if not defined normal authentication is used
         - 'name': the directory name (default 'Group')
         - 'query': optional query string (used for filtering or pagination, see the Broadworks XSI documentation)
         - 'timeout': connection timeout
@@ -52,6 +60,7 @@ class XSIDirectory:
         self.username = username
         self.password = password
         self.schema = schema
+        self.sip_user = sip_user
         self.name = name
         if self.name == 'Group':
             self.parse = self._parseGroup
@@ -95,9 +104,18 @@ class XSIDirectory:
 
         headers = {}
         if self.password != '':
-            headers["Authorization"] = "Basic " + base64.encodestring('%s:%s' % (self.username, self.password))[:-1]
+            if self.sip_user:
+                headers["Authorization"] = "BroadWorksSIP basic=\"" + base64.encodestring('%s:%s' % (self.username, self.password))[:-1] + \
+                        "\",sipUser=\"" + base64.encodestring(self.sip_user)[:-1]
+            else:
+                headers["Authorization"] = "Basic " + base64.encodestring('%s:%s' % (self.username, self.password))[:-1]
         self._setupURL()
-        self.connection.request('GET', self.url, headers=headers)
+        try:
+            print headers
+            print self.url
+            self.connection.request('GET', self.url, headers=headers)
+        except Exception:
+            raise XSIHTTPException("ERROR: cannot download the XSI directory at %s" % self.url)
         self.response = self.connection.getresponse()
         if self.response.status == 200:
             self.raw_data = self.response.read()
@@ -179,7 +197,7 @@ class XSIDirectory:
 class XSI2XCAP(XSIDirectory):
     """A class representing an XSI to XCAP contacts parsing"""
 
-    def __init__(self, host, username, password, port=None, schema='http', name='Group', query='', timeout=None, source_address=None):
+    def __init__(self, host, username, password, port=None, schema='http', sip_user=None, name='Group', query='', timeout=None, source_address=None):
         if name == 'Group':
             xsi_select_tags = ['directoryDetails', 'firstName', 'lastName', 'extension', 'number', 'emailAddress', 'mobile', 'pager', 'groupId']
             xsi_fields_map = {
@@ -199,7 +217,7 @@ class XSI2XCAP(XSIDirectory):
                     }
         self.format_dn = '%(surname)s'
         
-        XSIDirectory.__init__(self, host, username, password, port=port, schema=schema, name=name, query=query, timeout=timeout, source_address=source_address, skip_tags=[], select_tags=xsi_select_tags, fields_map=xsi_fields_map)
+        XSIDirectory.__init__(self, host, username, password, port=port, schema=schema, sip_user=sip_user, name=name, query=query, timeout=timeout, source_address=source_address, skip_tags=[], select_tags=xsi_select_tags, fields_map=xsi_fields_map)
 
     def __str__(self):
         ret = '<?xml version="1.0" encoding="UTF-8"?>\n'
@@ -223,7 +241,7 @@ class XSI2XCAP(XSIDirectory):
 class XSI2SnomMB(XSIDirectory):
     """A class representing an XSI 2 Snom Minibrowser application parser"""
 
-    def __init__(self, host, username, password, port=None, schema='http', name='Group', query='', timeout=None, source_address=None):
+    def __init__(self, host, username, password, port=None, schema='http', sip_user=None, name='Group', query='', timeout=None, source_address=None):
         
         if name == 'Group':
             snom_select_tags = ['firstName', 'lastName', 'extension', 'number', 'emailAddress', 'mobile']
@@ -233,7 +251,7 @@ class XSI2SnomMB(XSIDirectory):
             snom_select_tags = ['name', 'number']
             self.format_dn = '%(name)s'
 
-        XSIDirectory.__init__(self, host, username, password, port=port, schema=schema, name=name, query=query, timeout=timeout, source_address=source_address, skip_tags=[], select_tags=snom_select_tags)
+        XSIDirectory.__init__(self, host, username, password, port=port, schema=schema, sip_user=sip_user, name=name, query=query, timeout=timeout, source_address=source_address, skip_tags=[], select_tags=snom_select_tags)
     
     def __str__(self):
         ret = '<?xml version="1.0" encoding="UTF-8"?>\n'
@@ -265,7 +283,7 @@ class XSI2SnomMB(XSIDirectory):
 class XSI2SnomTbook(XSIDirectory):
     """A class representing an XSI 2 Snom tbook parser (http://wiki.snom.com/Features/Mass_Deployment/Setting_Files/XML/Directory)"""
     
-    def __init__(self, host, username, password, complete=True, port=None, schema='http', name='Group', query='', timeout=None, source_address=None):
+    def __init__(self, host, username, password, complete=True, port=None, schema='http', sip_user=None, name='Group', query='', timeout=None, source_address=None):
        
         self.complete = complete
 
@@ -275,7 +293,7 @@ class XSI2SnomTbook(XSIDirectory):
         else:
             raise XSISetupException("ERROR: Directory type '%s' not supported" % name)
         
-        XSIDirectory.__init__(self, host, username, password, port=port, schema=schema, name=name, query=query, timeout=timeout, source_address=source_address, skip_tags=[], select_tags=tbook_select_tags)
+        XSIDirectory.__init__(self, host, username, password, port=port, schema=schema, sip_user=sip_user, name=name, query=query, timeout=timeout, source_address=source_address, skip_tags=[], select_tags=tbook_select_tags)
     
     def __str__(self):
         ret = '<?xml version="1.0" encoding="utf-8"?>\n'
@@ -292,8 +310,8 @@ class XSI2SnomTbook(XSIDirectory):
 
 class XSI2Json(XSIDirectory):
     """A class representing an XSI 2 Json parser"""
-    def __init__(self, host, username, password, port=None, schema='http', name='Group', query='', timeout=None, source_address=None):
-        XSIDirectory.__init__(self, host, username, password, port=port, schema=schema, name=name, query=query, timeout=timeout, source_address=source_address)
+    def __init__(self, host, username, password, port=None, schema='http', sip_user=None, name='Group', query='', timeout=None, source_address=None):
+        XSIDirectory.__init__(self, host, username, password, port=port, schema=schema, sip_user=sip_user, name=name, query=query, timeout=timeout, source_address=source_address)
     
     def __str__(self):
         import json
@@ -312,9 +330,9 @@ if __name__ == '__main__':
         print "-p --password        set the authentication password, MANDATORY"
         print "-n --name            set the directory name (supported only 'Group' and 'Personal'), default: Group"
         print "-t --type            set the output type (supported: 'JSON', 'SNOM_TBOOK', 'SNOM_MB', 'XCAP'), default: JSON"
-
+        print "-s --sip-auth        set the XSI SIP authentication method, default normal HTTP auth is used"
     try:
-        opts, args = getopt.getopt(sys.argv[1:], "H:u:p:n:t:", ["host=", "user=", "password=", "name=", "type="])
+        opts, args = getopt.getopt(sys.argv[1:], "H:u:p:n:t:s:", ["host=", "user=", "password=", "name=", "type=", "sip-auth="])
     except getopt.GetoptError as err:
         print str(err)
         usage()
@@ -323,6 +341,7 @@ if __name__ == '__main__':
     host = user = password = None
     out_type = 'JSON'
     name = 'Group'
+    sip_user = None
 
     for o, val in opts:
         if o in ('-H', '--host'):
@@ -331,6 +350,8 @@ if __name__ == '__main__':
             user = val
         elif o in ('-p', '--password'):
             password = val
+        elif o in ('-s', '--sip-auth'):
+            sip_user = val
         elif o in ('-n', '--name'):
             if val in ('Group', 'Personal'):
                 name = val
@@ -354,14 +375,14 @@ if __name__ == '__main__':
         usage("password not defined")
 
     if out_type == 'JSON':
-        directory = XSI2Json(host, user, password, name=name)
+        directory = XSI2Json(host, user, password, name=name, sip_user=sip_user)
     if out_type == 'SNOM_TBOOK':
         # set the complete=false:
-        directory = XSI2SnomTbook(host, user, password, name=name, complete=False)
+        directory = XSI2SnomTbook(host, user, password, name=name, complete=False, sip_user=sip_user)
     if out_type == 'SNOM_MB':
-        directory = XSI2SnomMB(host, user, password, name=name)
+        directory = XSI2SnomMB(host, user, password, name=name, sip_user=sip_user)
     if out_type == 'XCAP':
-        directory = XSI2XCAP(host, user, password, name=name)
+        directory = XSI2XCAP(host, user, password, name=name, sip_user=sip_user)
     
     # send the request
     directory.getDirectory()
@@ -371,4 +392,3 @@ if __name__ == '__main__':
     
     # print the parsed output
     print directory
-    
