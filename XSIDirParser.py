@@ -22,7 +22,7 @@
 # - Debug option to dump all the data
 # - Derive a generic tool to query XSI actions
 
-import httplib
+import http.client
 import base64
 import xml.etree.ElementTree as ET
 import re
@@ -39,7 +39,7 @@ class XSIDirectory:
     '''Class representing the XSIDirectory'''
     def __init__(self, host, username, password='', port=None, schema='http', sip_user=None, name='Group', query='', timeout=None, source_address=None, skip_tags=[], select_tags=[], fields_map={}):
         '''Instantiate an XSIDirectory object creating a connection to the XSI Server:
-        
+
         Keyword arguments:
         - 'host': the XSI serve name
         - 'username': the authentication username
@@ -73,7 +73,7 @@ class XSIDirectory:
         self.skip_tags = skip_tags
         self.select_tags = select_tags
         self.fields_map = fields_map
-        
+
         if query != '':
             self.query = '?' + query
         else:
@@ -84,14 +84,15 @@ class XSIDirectory:
         elif self.schema == 'https' and port == None:
             self.port = 443
         elif port != None and self.schema in ('http','https'):
-            self.port = port
-        
+            self.port = int(port)
+        print("Host: %s" % self.host)
+        print("Port: %d" % self.port)
         if self.schema == 'http':
-            self.connection = httplib.HTTPConnection(self.host, self.port, timeout=self.timeout, source_address=self.source_address)
+            self.connection = http.client.HTTPConnection(self.host, self.port, timeout=self.timeout, source_address=self.source_address)
         elif self.schema == 'https':
-            self.connection = httplib.HTTPSConnection(self.host, self.port, timeout=self.timeout, source_address=self.source_address)
+            self.connection = http.client.HTTPSConnection(self.host, self.port, timeout=self.timeout, source_address=self.source_address)
         else:
-            raise XSISetupException("ERROR: Schema %s not supported" % schema) 
+            raise XSISetupException("ERROR: Schema %s not supported" % schema)
         self.directory = []
 
     def _setupURL(self):
@@ -105,17 +106,16 @@ class XSIDirectory:
         headers = {}
         if self.password != '':
             if self.sip_user:
-                headers["Authorization"] = "BroadWorksSIP basic=\"" + base64.encodestring('%s:%s' % (self.username, self.password))[:-1] + \
-                        "\",sipUser=\"" + base64.encodestring(self.sip_user)[:-1]
+                headers["Authorization"] = "BroadWorksSIP basic=\"" + str(base64.b64encode(bytes('%s:%s' % (self.username, self.password), 'utf-8')))[:-1] + \
+                        "\",sipUser=\"" + str(base64.b64encode( bytes(self.sip_user, "utf-8") ))[:-1]
             else:
-                headers["Authorization"] = "Basic " + base64.encodestring('%s:%s' % (self.username, self.password))[:-1]
+                headers["Authorization"] = "Basic " + str(base64.b64encode(bytes('%s:%s' % (self.username, self.password), 'utf-8')))[:-1]
+        print(headers)
         self._setupURL()
         try:
-            print headers
-            print self.url
             self.connection.request('GET', self.url, headers=headers)
-        except Exception:
-            raise XSIHTTPException("ERROR: cannot download the XSI directory at %s" % self.url)
+        except Exception as e:
+            raise XSIHTTPException("ERROR: cannot download the XSI directory at %s: %s" % (self.url, e))
         self.response = self.connection.getresponse()
         if self.response.status == 200:
             self.raw_data = self.response.read()
@@ -129,7 +129,7 @@ class XSIDirectory:
             return None
         if len(self.select_tags) > 0 and tag not in self.select_tags:
             return None
-        if tag in self.fields_map.keys():
+        if tag in list(self.fields_map.keys()):
             tag = self.fields_map[tag]
         return tag.encode('utf-8')
 
@@ -158,7 +158,6 @@ class XSIDirectory:
                                 contact_dict[details_tag_name] = ''
                             else:
                                 contact_dict[details_tag_name] = details_tag.text.encode('utf-8')
-                            
                 tag_name = self._filter_tag(tag_name)
                 if tag_name == None:
                     continue
@@ -169,7 +168,7 @@ class XSIDirectory:
                         contact_dict[tag_name] = tag.text.encode('utf-8')
 
             self.directory.append(contact_dict)
-    
+
     def _parsePersonal(self):
         """This method walks into the 'self.xml_root' **xml.etree.ElementTree** object and extract all the tags contained into the **./entry** XML path.
         Tags name mentioned into the 'self.skip_tags' list will be ignored.
@@ -227,7 +226,7 @@ class XSI2XCAP(XSIDirectory):
         for contact in self.directory:
             ret += '\t\t<entry>\n'
             ret += '\t\t\t<display-name>%s</display-name>\n' % self._formatDisplayName(contact)
-            for prop in contact.keys():
+            for prop in list(contact.keys()):
                 ret += '\t\t\t<cp:prop name="%s" value="%s"/>\n' % (prop, contact[prop])
             ret += '\t\t</entry>\n'
         
@@ -259,19 +258,19 @@ class XSI2SnomMB(XSIDirectory):
         
         for contact in self.directory:
             ret += '\t<Menu name="%s">\n' % self._formatDisplayName(contact)
-            if 'mobile' in contact.keys():
+            if 'mobile' in list(contact.keys()):
                 ret += '\t\t<MenuItem name="Mobile: %s">\n' % contact['mobile']
                 ret += '\t\t\t<URL>snom://mb_nop#numberdial=%s</URL>\n' % contact['mobile']
                 ret += '\t\t</MenuItem>\n'
-            if 'number' in contact.keys():
+            if 'number' in list(contact.keys()):
                 ret += '\t\t<MenuItem name="Number: %s">\n' % contact['number']
                 ret += '\t\t\t<URL>snom://mb_nop#numberdial=%s</URL>\n' % contact['number']
                 ret += '\t\t</MenuItem>\n'
-            if 'extension' in contact.keys():
+            if 'extension' in list(contact.keys()):
                 ret += '\t\t<MenuItem name="Extension: %s">\n' % contact['extension']
                 ret += '\t\t\t<URL>snom://mb_nop#numberdial=%s</URL>\n' % contact['extension']
                 ret += '\t\t</MenuItem>\n'
-            if 'emailAddress' in contact.keys():
+            if 'emailAddress' in list(contact.keys()):
                 ret += '\t\t<MenuItem name="Email: %s"/>\n' % contact['emailAddress']
             ret += '\t</Menu>\n'
         ret += '</SnomIPPhoneMenu>\n'
@@ -323,29 +322,40 @@ if __name__ == '__main__':
 
     def usage(msg=None):
         if msg:
-            print "ERROR: %s" % msg
-        print "Usage:\n"
-        print "-H --host            set the XSI server"
-        print "-u --user            set the authentication username, MANDATORY"
-        print "-p --password        set the authentication password, MANDATORY"
-        print "-n --name            set the directory name (supported only 'Group' and 'Personal'), default: Group"
-        print "-t --type            set the output type (supported: 'JSON', 'SNOM_TBOOK', 'SNOM_MB', 'XCAP'), default: JSON"
-        print "-s --sip-auth        set the XSI SIP authentication method, default normal HTTP auth is used"
+            print(("ERROR: %s" % msg))
+        print("Usage:\n")
+        print("-H --host            set the XSI server")
+        print("-P --port            set the HTTP(s) port")
+        print("-S --scheme          set the protocol scheme (http or https)")
+        print("-u --user            set the authentication username, MANDATORY")
+        print("-p --password        set the authentication password, MANDATORY")
+        print("-n --name            set the directory name (supported only 'Group' and 'Personal'), default: Group")
+        print("-t --type            set the output type (supported: 'JSON', 'SNOM_TBOOK', 'SNOM_MB', 'XCAP'), default: JSON")
+        print("-s --sip-auth        set the XSI SIP authentication method, default normal HTTP auth is used")
     try:
-        opts, args = getopt.getopt(sys.argv[1:], "H:u:p:n:t:s:", ["host=", "user=", "password=", "name=", "type=", "sip-auth="])
+        opts, args = getopt.getopt(sys.argv[1:], "H:P:S:u:p:n:t:s:", ["host=", "user=", "password=", "name=", "type=", "sip-auth="])
     except getopt.GetoptError as err:
-        print str(err)
+        print((str(err)))
         usage()
         sys.exit(2)
-    
-    host = user = password = None
+
+    host = port = user = password = None
     out_type = 'JSON'
     name = 'Group'
     sip_user = None
+    schema = 'http'
 
     for o, val in opts:
         if o in ('-H', '--host'):
             host = val
+        if o in ('-P', '--port'):
+            port = val
+        if o in ('-S', '--scheme'):
+            if val in ('http', 'https'):
+                schema = val
+            else:
+                usage('scheme must be http or https')
+                sys.exit(2)
         elif o in ('-u', '--user'):
             user = val
         elif o in ('-p', '--password'):
@@ -364,7 +374,7 @@ if __name__ == '__main__':
             else:
                 usage("output type '%s' not supported" % val)
                 sys.exit(2)
-    
+
     # host, user and password are mandatory
     if host == None:
         usage("host not defined")
@@ -375,7 +385,7 @@ if __name__ == '__main__':
         usage("password not defined")
 
     if out_type == 'JSON':
-        directory = XSI2Json(host, user, password, name=name, sip_user=sip_user)
+        directory = XSI2Json(host, user, password, port=port, schema=schema, name=name, sip_user=sip_user)
     if out_type == 'SNOM_TBOOK':
         # set the complete=false:
         directory = XSI2SnomTbook(host, user, password, name=name, complete=False, sip_user=sip_user)
@@ -383,12 +393,12 @@ if __name__ == '__main__':
         directory = XSI2SnomMB(host, user, password, name=name, sip_user=sip_user)
     if out_type == 'XCAP':
         directory = XSI2XCAP(host, user, password, name=name, sip_user=sip_user)
-    
+
     # send the request
     directory.getDirectory()
-   
+
     # parse the result
     directory.parse()
-    
+
     # print the parsed output
-    print directory
+    print(directory)
