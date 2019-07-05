@@ -331,11 +331,11 @@ if __name__ == '__main__':
         print("-p --password        set the authentication password, MANDATORY")
         print("-n --name            set the directory name (supported only 'Group' and 'Personal'), default: Group")
         print("-t --type            set the output type (supported: 'JSON', 'SNOM_TBOOK', 'SNOM_MB', 'XCAP'), default: JSON")
-        print("-s --sip-auth        set the XSI SIP authentication method, default normal HTTP auth is used")
+        print("-s --sip-auth        set the XSI SIP authentication username, if set the script will authenticate using the BroadWorksSIP hash")
     try:
         opts, args = getopt.getopt(sys.argv[1:], "H:P:S:u:p:n:t:s:", ["host=", "user=", "password=", "name=", "type=", "sip-auth="])
     except getopt.GetoptError as err:
-        print((str(err)))
+        print(str(err))
         usage()
         sys.exit(2)
 

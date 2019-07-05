@@ -16,10 +16,13 @@ pietro$ python XSIDirParser.py -h
 Usage:
 
 -H --host            set the XSI server
+-P --port            set the HTTP(s) port
+-S --scheme          set the protocol scheme (http or https)
 -u --user            set the authentication username, MANDATORY
 -p --password        set the authentication password, MANDATORY
 -n --name            set the directory name (supported only 'Group' and 'Personal'), default: Group
 -t --type            set the output type (supported: 'JSON', 'SNOM_TBOOK', 'SNOM_MB', 'XCAP'), default: JSON
+-s --sip-auth        set the XSI SIP authentication username, if set the script will authenticate using the BroadWorksSIP hash
 ```
 
 ### Examples
